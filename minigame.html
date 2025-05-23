@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quebra-Blocos com Power-ups</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #009BE6, #0072a8);
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            color: #FFF;
+        }
+        
+        canvas {
+            background: #003c5a;
+            border-radius: 5px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border: 2px solid #89D329;
+        }
+        
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 600px;
+            margin-top: 20px;
+            color: #FFF;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .controls {
+            margin-top: 15px;
+            color: #89D329;
+            text-align: center;
+        }
+        
+        .game-over, .level-complete, .start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 60, 90, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: #FFF;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border: 2px solid #89D329;
+            display: none;
+        }
+        
+        .start-screen {
+            display: block;
+        }
+        
+        button {
+            background: #89D329;
+            color: #FFF;
+            border: none;
+            padding: 10px 20px;
+            margin-top: 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: #a0e83d;
+            transform: scale(1.05);
+        }
+        
+        h2 {
+            margin-bottom: 15px;
+            font-size: 28px;
+            color: #89D329;
+        }
+        
+        .power-up-info {
+            margin-top: 10px;
+            color: #FFF;
+            font-size: 16px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 600px;
+        }
+        
+        .power-up-info span {
+            margin: 0 5px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="margin-bottom: 20px; color: #FFF; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">QUEBRA-BLOCOS</h1>
+    
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    
+    <div class="game-info">
+        <div id="score">Pontuação: 0</div>
+        <div id="level">Nível: 1</div>
+        <div id="lives">Vidas: 3</div>
+    </div>
+    
+    <div class="power-up-info">
+        Power-ups: 
+        <span style="background-color: #89D329;">Plataforma Maior</span>
+        <span style="background-color: #4CAF50;">Vida Extra</span>
+        <span style="background-color: #009BE6;">Bola Lenta</span>
+        <span style="background-color: #9C27B0;">Multi-Bolas</span>
+        <span style="background-color: #FF9800;">Bola Atravessa</span>
+        <span style="background-color: #FF5252;">Plataforma Menor</span>
+    </div>
+    
+    <div class="controls">Use as setas ← → ou mova o mouse para controlar a plataforma</div>
+    
+    <div class="start-screen" id="startScreen">
+        <h2>QUEBRA-BLOCOS</h2>
+        <p>Use as setas ou o mouse para mover a plataforma</p>
+        <p>Destrua todos os blocos para avançar de nível</p>
+        <p>Colete power-ups para obter vantagens!</p>
+        <p style="color: #FF5252; margin-top: 10px;">Cuidado com os debuffs!</p>
+        <button id="startButton">INICIAR JOGO</button>
+    </div>
+    
+    <div class="game-over" id="gameOverScreen">
+        <h2>FIM DE JOGO</h2>
+        <p id="finalScore">Pontuação: 0</p>
+        <button id="restartButton">JOGAR NOVAMENTE</button>
+    </div>
+    
+    <div class="level-complete" id="levelCompleteScreen">
+        <h2>NÍVEL COMPLETO!</h2>
+        <p id="levelScore">Pontuação: 0</p>
+        <button id="nextLevelButton">PRÓXIMO NÍVEL</button>
+    </div>
+    
+    <script>
+        // Configuração do canvas
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        
+        // Elementos da interface
+        const startScreen = document.getElementById("startScreen");
+        const gameOverScreen = document.getElementById("gameOverScreen");
+        const levelCompleteScreen = document.getElementById("levelCompleteScreen");
+        const startButton = document.getElementById("startButton");
+        const restartButton = document.getElementById("restartButton");
+        const nextLevelButton = document.getElementById("nextLevelButton");
+        const finalScoreElement = document.getElementById("finalScore");
+        const levelScoreElement = document.getElementById("levelScore");
+        
+        // Variáveis do jogo
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let gameRunning = false;
+        let gamePaused = false;
+        let paddleFlashTimer = 0;
+        
+        // Sistema de partículas para efeitos visuais
+        let particles = [];
+        
+        // Configuração da bola
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height - 50,
+            radius: 8,
+            speed: 4,
+            dx: 4,
+            dy: -4,
+            color: "#FFF"
+        };
+        
+        // Array para múltiplas bolas
+        let balls = [];
+        
+        // Configuração da plataforma
+        const paddle = {
+            width: 100,
+            height: 15,
+            x: (canvas.width - 100) / 2,
+            y: canvas.height - 30,
+            speed: 8,
+            dx: 0,
+            color: "#FFF",
+            originalWidth: 100,
+            originalColor: "#FFF"
+        };
+        
+        // Configuração dos blocos
+        const brickRowCount = 5;
+        const brickColumnCount = 9;
+        const brickWidth = 55;
+        const brickHeight = 20;
+        const brickPadding = 10;
+        const brickOffsetTop = 40;
+        const brickOffsetLeft = 30;
+        const brickColors = ["#009BE6", "#1EAEFC", "#4CBDFC", "#79CCFC", "#A6DBFC"];
+        
+        // Configuração dos power-ups
+        const powerUpTypes = [
+            { type: "widen", color: "#89D329", symbol: "W", probability: 0.15 },
+            { type: "life", color: "#4CAF50", symbol: "+", probability: 0.08 },
+            { type: "slow", color: "#009BE6", symbol: "S", probability: 0.12 },
+            { type: "multi", color: "#9C27B0", symbol: "M", probability: 0.1 },
+            { type: "through", color: "#FF9800", symbol: "T", probability: 0.07 },
+            { type: "shrink", color: "#FF5252", symbol: "-", probability: 0.1 } // Novo debuff
+        ];
+        
+        let powerUps = [];
+        let activePowerUps = {
+            widen: { active: false, timer: 0, duration: 15000 },
+            slow: { active: false, timer: 0, duration: 10000 },
+            through: { active: false, timer: 0, duration: 8000 },
+            shrink: { active: false, timer: 0, duration: 8000 } // Novo debuff
+        };
+        
+        // Criar matriz de blocos
+        let bricks = [];
+        
+        function initializeBricks() {
+            bricks = [];
+            for (let c = 0; c < brickColumnCount; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < brickRowCount; r++) {
+                    const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+                    const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+                    // Adicionar blocos especiais em níveis mais altos
+                    let hitPoints = 1;
+                    if (level > 1 && r === 0) {
+                        hitPoints = 2; // Blocos que precisam de 2 hits em níveis mais altos
+                    }
+                    if (level > 3 && r === 1) {
+                        hitPoints = 2; // Mais blocos resistentes em níveis avançados
+                    }
+                    bricks[c][r] = { 
+                        x: brickX, 
+                        y: brickY, 
+                        status: 1, 
+                        hitPoints: hitPoints,
+                        color: brickColors[r],
+                        hasPowerUp: Math.random() < 0.3 // 30% de chance de ter power-up
+                    };
+                }
+            }
+        }
+        
+        // Sistema de partículas para efeitos visuais
+        class Particle {
+            constructor(x, y, color, type = "fire") {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 2;
+                this.speedX = Math.random() * 2 - 1;
+                this.speedY = Math.random() * 2 - 1;
+                this.color = color;
+                this.life = 20;
+                this.type = type;
+                
+                // Ajustes específicos para partículas de gelo
+                if (type === "ice") {
+                    this.speedX *= 0.5;
+                    this.speedY *= 0.5;
+                    this.life = 30;
+                }
+            }
+            
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life--;
+                
+                // Diminuir tamanho gradualmente
+                if (this.life < 10) {
+                    this.size *= 0.95;
+                }
+            }
+            
+            draw() {
+                ctx.beginPath();
+                
+                if (this.type === "ice") {
+                    // Desenhar cristais de gelo (pequenos asteriscos)
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(Math.random() * Math.PI * 2);
+                    
+                    for (let i = 0; i < 3; i++) {
+                        ctx.rotate(Math.PI / 3);
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(0, this.size);
+                        ctx.strokeStyle = this.color;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                    
+                    ctx.restore();
+                } else {
+                    // Desenhar partículas de fogo (círculos)
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                }
+                
+                ctx.closePath();
+            }
+        }
+        
+        // Criar partículas para efeito de fogo
+        function createFireParticles(x, y) {
+            const colors = ["#FF9800", "#FF5722", "#FFEB3B"];
+            for (let i = 0; i < 2; i++) {
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                particles.push(new Particle(x, y, color, "fire"));
+            }
+        }
+        
+        // Criar partículas para efeito de gelo
+        function createIceParticles(x, y) {
+            const colors = ["#009BE6", "#4FC3F7", "#B3E5FC"];
+            for (let i = 0; i < 2; i++) {
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                particles.push(new Particle(x, y, color, "ice"));
+            }
+        }
+        
+        // Atualizar e desenhar partículas
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Controles
+        let rightPressed = false;
+        let leftPressed = false;
+        
+        document.addEventListener("keydown", keyDownHandler);
+        document.addEventListener("keyup", keyUpHandler);
+        document.addEventListener("mousemove", mouseMoveHandler);
+        
+        function keyDownHandler(e) {
+            if (e.key === "Right" || e.key === "ArrowRight") {
+                rightPressed = true;
+            } else if (e.key === "Left" || e.key === "ArrowLeft") {
+                leftPressed = true;
+            } else if (e.key === "p" || e.key === "P") {
+                togglePause();
+            }
+        }
+        
+        function keyUpHandler(e) {
+            if (e.key === "Right" || e.key === "ArrowRight") {
+                rightPressed = false;
+            } else if (e.key === "Left" || e.key === "ArrowLeft") {
+                leftPressed = false;
+            }
+        }
+        
+        function mouseMoveHandler(e) {
+            if (!gameRunning || gamePaused) return;
+            
+            const relativeX = e.clientX - canvas.offsetLeft;
+            if (relativeX > paddle.width / 2 && relativeX < canvas.width - paddle.width / 2) {
+                paddle.x = relativeX - paddle.width / 2;
+            }
+        }
+        
+        function togglePause() {
+            if (!gameRunning) return;
+            
+            gamePaused = !gamePaused;
+            if (!gamePaused) {
+                lastTime = performance.now();
+                requestAnimationFrame(draw);
+            }
+        }
+        
+        // Criar um power-up
+        function createPowerUp(x, y) {
+            // Determinar qual power-up criar com base nas probabilidades
+            let rand = Math.random();
+            let cumulativeProbability = 0;
+            let selectedType = null;
+            
+            for (let powerType of powerUpTypes) {
+                cumulativeProbability += powerType.probability;
+                if (rand <= cumulativeProbability && !selectedType) {
+                    selectedType = powerType;
+                }
+            }
+            
+            if (selectedType) {
+                powerUps.push({
+                    x: x,
+                    y: y,
+                    width: 20,
+                    height: 20,
+                    speed: 2,
+                    type: selectedType.type,
+                    color: selectedType.color,
+                    symbol: selectedType.symbol
+                });
+            }
+        }
+        
+        // Detectar colisão com blocos
+        function collisionDetection() {
+            for (let i = 0; i < balls.length; i++) {
+                const currentBall = balls[i];
+                
+                for (let c = 0; c < brickColumnCount; c++) {
+                    for (let r = 0; r < brickRowCount; r++) {
+                        const b = bricks[c][r];
+                        if (b && b.status === 1) {
+                            if (
+                                currentBall.x > b.x &&
+                                currentBall.x < b.x + brickWidth &&
+                                currentBall.y > b.y &&
+                                currentBall.y < b.y + brickHeight
+                            ) {
+                                // Se o power-up "through" estiver ativo, a bola atravessa os blocos
+                                if (!activePowerUps.through.active) {
+                                    // Determinar de qual direção a bola está vindo
+                                    const overlapLeft = currentBall.x - b.x;
+                                    const overlapRight = b.x + brickWidth - currentBall.x;
+                                    const overlapTop = currentBall.y - b.y;
+                                    const overlapBottom = b.y + brickHeight - currentBall.y;
+                                    
+                                    // Encontrar a menor sobreposição
+                                    const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+                                    
+                                    // Rebater a bola na direção correta
+                                    if (minOverlap === overlapLeft || minOverlap === overlapRight) {
+                                        currentBall.dx = -currentBall.dx;
+                                    } else {
+                                        currentBall.dy = -currentBall.dy;
+                                    }
+                                }
+                                
+                                b.hitPoints--;
+                                
+                                if (b.hitPoints <= 0) {
+                                    b.status = 0;
+                                    score += 10;
+                                    updateScore();
+                                    
+                                    // Criar power-up se o bloco tiver um
+                                    if (b.hasPowerUp) {
+                                        createPowerUp(b.x + brickWidth/2, b.y + brickHeight);
+                                    }
+                                } else {
+                                    // Mudar cor para indicar dano
+                                    b.color = "#aaa";
+                                }
+                                
+                                // Verificar se o nível está completo
+                                if (checkLevelComplete()) {
+                                    levelComplete();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        function checkLevelComplete() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    if (bricks[c][r] && bricks[c][r].status === 1) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        
+        function levelComplete() {
+            gameRunning = false;
+            levelScoreElement.textContent = "Pontuação: " + score;
+            levelCompleteScreen.style.display = "block";
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            finalScoreElement.textContent = "Pontuação final: " + score;
+            gameOverScreen.style.display = "block";
+        }
+        
+        // Atualizar a pontuação na tela
+        function updateScore() {
+            document.getElementById("score").textContent = "Pontuação: " + score;
+        }
+        
+        // Desenhar as bolas
+        function drawBalls() {
+            for (let i = 0; i < balls.length; i++) {
+                const currentBall = balls[i];
+                
+                // Desenhar a bola
+                ctx.beginPath();
+                ctx.arc(currentBall.x, currentBall.y, currentBall.radius, 0, Math.PI * 2);
+                
+                // Determinar o estilo da bola com base nos power-ups ativos
+                if (activePowerUps.through.active && activePowerUps.slow.active) {
+                    // Efeito combinado de fogo e gelo
+                    const gradient = ctx.createRadialGradient(
+                        currentBall.x, currentBall.y, 0,
+                        currentBall.x, currentBall.y, currentBall.radius
+                    );
+                    gradient.addColorStop(0, "#FFFFFF");
+                    gradient.addColorStop(0.3, "#B3E5FC");
+                    gradient.addColorStop(0.7, "#FF9800");
+                    gradient.addColorStop(1, "#FF5722");
+                    ctx.fillStyle = gradient;
+                    
+                    // Criar partículas de fogo e gelo
+                    if (Math.random() < 0.5) {
+                        createFireParticles(currentBall.x, currentBall.y);
+                    } else {
+                        createIceParticles(currentBall.x, currentBall.y);
+                    }
+                } else if (activePowerUps.through.active) {
+                    // Efeito de fogo
+                    const gradient = ctx.createRadialGradient(
+                        currentBall.x, currentBall.y, 0,
+                        currentBall.x, currentBall.y, currentBall.radius
+                    );
+                    gradient.addColorStop(0, "#FFEB3B");
+                    gradient.addColorStop(0.7, "#FF9800");
+                    gradient.addColorStop(1, "#FF5722");
+                    ctx.fillStyle = gradient;
+                    
+                    // Criar partículas de fogo
+                    createFireParticles(currentBall.x, currentBall.y);
+                } else if (activePowerUps.slow.active) {
+                    // Efeito de gelo
+                    const gradient = ctx.createRadialGradient(
+                        currentBall.x, currentBall.y, 0,
+                        currentBall.x, currentBall.y, currentBall.radius
+                    );
+                    gradient.addColorStop(0, "#FFFFFF");
+                    gradient.addColorStop(0.5, "#B3E5FC");
+                    gradient.addColorStop(1, "#009BE6");
+                    ctx.fillStyle = gradient;
+                    
+                    // Criar partículas de gelo
+                    createIceParticles(currentBall.x, currentBall.y);
+                } else {
+                    ctx.fillStyle = currentBall.color;
+                }
+                
+                ctx.fill();
+                ctx.closePath();
+                
+                // Adicionar brilho à bola
+                if (activePowerUps.through.active || activePowerUps.slow.active) {
+                    ctx.beginPath();
+                    ctx.arc(currentBall.x, currentBall.y, currentBall.radius + 2, 0, Math.PI * 2);
+                    
+                    if (activePowerUps.through.active && activePowerUps.slow.active) {
+                        // Brilho para efeito combinado
+                        ctx.strokeStyle = "#FFFFFF";
+                    } else if (activePowerUps.through.active) {
+                        // Brilho para efeito de fogo
+                        ctx.strokeStyle = "#FFEB3B";
+                    } else {
+                        // Brilho para efeito de gelo
+                        ctx.strokeStyle = "#B3E5FC";
+                    }
+                    
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.closePath();
+                }
+            }
+        }
+        
+        // Desenhar a plataforma
+        function drawPaddle() {
+            ctx.beginPath();
+            
+            // Mudar a cor da plataforma com base nos power-ups ativos
+            if (activePowerUps.widen.active) {
+                // Plataforma maior - cor verde
+                const timeLeft = activePowerUps.widen.timer / 1000;
+                
+                if (timeLeft < 5) {
+                    // Piscar mais rápido nos últimos 5 segundos
+                    paddleFlashTimer += 0.1;
+                    if (Math.sin(paddleFlashTimer) > 0) {
+                        ctx.fillStyle = "#89D329"; // Cor do power-up
+                    } else {
+                        ctx.fillStyle = paddle.originalColor;
+                    }
+                } else {
+                    ctx.fillStyle = "#89D329"; // Cor do power-up
+                }
+            } else if (activePowerUps.shrink.active) {
+                // Plataforma menor - cor vermelha
+                const timeLeft = activePowerUps.shrink.timer / 1000;
+                
+                if (timeLeft < 5) {
+                    // Piscar mais rápido nos últimos 5 segundos
+                    paddleFlashTimer += 0.1;
+                    if (Math.sin(paddleFlashTimer) > 0) {
+                        ctx.fillStyle = "#FF5252"; // Cor do debuff
+                    } else {
+                        ctx.fillStyle = paddle.originalColor;
+                    }
+                } else {
+                    ctx.fillStyle = "#FF5252"; // Cor do debuff
+                }
+            } else {
+                ctx.fillStyle = paddle.originalColor;
+            }
+            
+            ctx.rect(paddle.x, paddle.y, paddle.width, paddle.height);
+            ctx.fill();
+            ctx.closePath();
+            
+            // Adicionar efeito de brilho se algum power-up estiver ativo
+            if (activePowerUps.widen.active || activePowerUps.slow.active || activePowerUps.through.active) {
+                ctx.beginPath();
+                ctx.rect(paddle.x, paddle.y, paddle.width, 3);
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+        
+        // Desenhar os blocos
+        function drawBricks() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    const b = bricks[c][r];
+                    if (b && b.status === 1) {
+                        ctx.beginPath();
+                        ctx.rect(b.x, b.y, brickWidth, brickHeight);
+                        ctx.fillStyle = b.color;
+                        ctx.fill();
+                        ctx.closePath();
+                        
+                        // Adicionar efeito 3D aos blocos
+                        ctx.beginPath();
+                        ctx.moveTo(b.x, b.y);
+                        ctx.lineTo(b.x, b.y + brickHeight);
+                        ctx.lineTo(b.x + brickWidth, b.y + brickHeight);
+                        ctx.strokeStyle = "rgba(0,0,0,0.3)";
+                        ctx.stroke();
+                        ctx.closePath();
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(b.x, b.y);
+                        ctx.lineTo(b.x + brickWidth, b.y);
+                        ctx.lineTo(b.x + brickWidth, b.y + brickHeight);
+                        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+                        ctx.stroke();
+                        ctx.closePath();
+                        
+                        // Indicador de bloco com power-up
+                        if (b.hasPowerUp) {
+                            ctx.beginPath();
+                            ctx.arc(b.x + brickWidth/2, b.y + brickHeight/2, 3, 0, Math.PI * 2);
+                            ctx.fillStyle = "#FFFFFF";
+                            ctx.fill();
+                            ctx.closePath();
+                        }
+                        
+                        // Indicador de bloco resistente
+                        if (b.hitPoints > 1) {
+                            ctx.beginPath();
+                            ctx.moveTo(b.x + 10, b.y + brickHeight/2);
+                            ctx.lineTo(b.x + brickWidth - 10, b.y + brickHeight/2);
+                            ctx.strokeStyle = "#FFFFFF";
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+                            ctx.lineWidth = 1;
+                            ctx.closePath();
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Desenhar power-ups
+        function drawPowerUps() {
+            for (let i = 0; i < powerUps.length; i++) {
+                const p = powerUps[i];
+                ctx.beginPath();
+                ctx.rect(p.x - p.width/2, p.y, p.width, p.height);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                ctx.strokeStyle = "#FFFFFF";
+                ctx.strokeRect(p.x - p.width/2, p.y, p.width, p.height);
+                ctx.closePath();
+                
+                // Desenhar símbolo do power-up
+                ctx.font = "bold 14px Arial";
+                ctx.fillStyle = "#FFFFFF";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(p.symbol, p.x, p.y + p.height/2);
+            }
+        }
+        
+        // Desenhar indicadores de power-ups ativos
+        function drawActivePowerUps() {
+            let y = 20;
+            ctx.font = "12px Arial";
+            ctx.textAlign = "left";
+            
+            if (activePowerUps.widen.active) {
+                const timeLeft = Math.ceil(activePowerUps.widen.timer / 1000);
+                ctx.fillStyle = "#89D329";
+                ctx.fillText("Plataforma Maior: " + timeLeft + "s", 10, y);
+                y += 15;
+            }
+            
+            if (activePowerUps.shrink.active) {
+                const timeLeft = Math.ceil(activePowerUps.shrink.timer / 1000);
+                ctx.fillStyle = "#FF5252";
+                ctx.fillText("Plataforma Menor: " + timeLeft + "s", 10, y);
+                y += 15;
+            }
+            
+            if (activePowerUps.slow.active) {
+                const timeLeft = Math.ceil(activePowerUps.slow.timer / 1000);
+                ctx.fillStyle = "#009BE6";
+                ctx.fillText("Bola Lenta: " + timeLeft + "s", 10, y);
+                y += 15;
+            }
+            
+            if (activePowerUps.through.active) {
+                const timeLeft = Math.ceil(activePowerUps.through.timer / 1000);
+                ctx.fillStyle = "#FF9800";
+                ctx.fillText("Bola Atravessa: " + timeLeft + "s", 10, y);
+            }
+        }
+        
+        // Atualizar power-ups
+        function updatePowerUps(deltaTime) {
+            // Mover power-ups para baixo
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const p = powerUps[i];
+                p.y += p.speed;
+                
+                // Verificar colisão com a plataforma
+                if (
+                    p.y + p.height > paddle.y &&
+                    p.y < paddle.y + paddle.height &&
+                    p.x > paddle.x &&
+                    p.x < paddle.x + paddle.width
+                ) {
+                    // Aplicar efeito do power-up
+                    applyPowerUp(p.type);
+                    powerUps.splice(i, 1);
+                }
+                // Remover power-ups que saem da tela
+                else if (p.y > canvas.height) {
+                    powerUps.splice(i, 1);
+                }
+            }
+            
+            // Atualizar temporizadores de power-ups ativos
+            if (activePowerUps.widen.active) {
+                activePowerUps.widen.timer -= deltaTime;
+                if (activePowerUps.widen.timer <= 0) {
+                    activePowerUps.widen.active = false;
+                    // Só restaurar a largura original se não estiver sob efeito de shrink
+                    if (!activePowerUps.shrink.active) {
+                        paddle.width = paddle.originalWidth;
+                    }
+                }
+            }
+            
+            if (activePowerUps.shrink.active) {
+                activePowerUps.shrink.timer -= deltaTime;
+                if (activePowerUps.shrink.timer <= 0) {
+                    activePowerUps.shrink.active = false;
+                    // Só restaurar a largura original se não estiver sob efeito de widen
+                    if (!activePowerUps.widen.active) {
+                        paddle.width = paddle.originalWidth;
+                    } else {
+                        // Se widen estiver ativo, aplicar seu efeito
+                        paddle.width = paddle.originalWidth * 1.5;
+                    }
+                }
+            }
+            
+            if (activePowerUps.slow.active) {
+                activePowerUps.slow.timer -= deltaTime;
+                if (activePowerUps.slow.timer <= 0) {
+                    activePowerUps.slow.active = false;
+                    // Restaurar velocidade normal
+                    for (let i = 0; i < balls.length; i++) {
+                        balls[i].speed *= 2;
+                        balls[i].dx = balls[i].dx > 0 ? balls[i].speed : -balls[i].speed;
+                        balls[i].dy = balls[i].dy > 0 ? balls[i].speed : -balls[i].speed;
+                    }
+                }
+            }
+            
+            if (activePowerUps.through.active) {
+                activePowerUps.through.timer -= deltaTime;
+                if (activePowerUps.through.timer <= 0) {
+                    activePowerUps.through.active = false;
+                }
+            }
+        }
+        
+        // Aplicar efeito do power-up
+        function applyPowerUp(type) {
+            switch (type) {
+                case "widen":
+                    // Aumentar largura da plataforma
+                    if (activePowerUps.widen.active) {
+                        // Acumular tempo se já estiver ativo
+                        activePowerUps.widen.timer += activePowerUps.widen.duration;
+                    } else {
+                        activePowerUps.widen.active = true;
+                        activePowerUps.widen.timer = activePowerUps.widen.duration;
+                        // Só aplicar o efeito se não estiver sob efeito de shrink
+                        if (!activePowerUps.shrink.active) {
+                            paddle.width = paddle.originalWidth * 1.5;
+                        }
+                    }
+                    break;
+                    
+                case "shrink":
+                    // Diminuir largura da plataforma (debuff)
+                    if (activePowerUps.shrink.active) {
+                        // Acumular tempo se já estiver ativo
+                        activePowerUps.shrink.timer += activePowerUps.shrink.duration;
+                    } else {
+                        activePowerUps.shrink.active = true;
+                        activePowerUps.shrink.timer = activePowerUps.shrink.duration;
+                        // Aplicar o efeito de diminuição
+                        paddle.width = paddle.originalWidth * 0.6; // 60% do tamanho original
+                    }
+                    break;
+                    
+                case "life":
+                    // Adicionar vida extra
+                    lives++;
+                    drawLives();
+                    break;
+                    
+                case "slow":
+                    // Diminuir velocidade da bola
+                    if (activePowerUps.slow.active) {
+                        // Acumular tempo se já estiver ativo
+                        activePowerUps.slow.timer += activePowerUps.slow.duration;
+                    } else {
+                        activePowerUps.slow.active = true;
+                        activePowerUps.slow.timer = activePowerUps.slow.duration;
+                        for (let i = 0; i < balls.length; i++) {
+                            balls[i].speed /= 2;
+                            balls[i].dx = balls[i].dx > 0 ? balls[i].speed : -balls[i].speed;
+                            balls[i].dy = balls[i].dy > 0 ? balls[i].speed : -balls[i].speed;
+                        }
+                    }
+                    break;
+                    
+                case "multi":
+                    // Adicionar bolas extras
+                    const numBalls = Math.min(balls.length + 2, 4); // Máximo de 4 bolas
+                    while (balls.length < numBalls) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const newBall = {
+                            x: balls[0].x,
+                            y: balls[0].y,
+                            radius: balls[0].radius,
+                            speed: balls[0].speed,
+                            dx: balls[0].speed * Math.cos(angle),
+                            dy: balls[0].speed * Math.sin(angle),
+                            color: ball.color
+                        };
+                        balls.push(newBall);
+                    }
+                    break;
+                    
+                case "through":
+                    // Bola atravessa blocos
+                    if (activePowerUps.through.active) {
+                        // Acumular tempo se já estiver ativo
+                        activePowerUps.through.timer += activePowerUps.through.duration;
+                    } else {
+                        activePowerUps.through.active = true;
+                        activePowerUps.through.timer = activePowerUps.through.duration;
+                    }
+                    break;
+            }
+        }
+        
+        // Desenhar vidas
+        function drawLives() {
+            document.getElementById("lives").textContent = "Vidas: " + lives;
+        }
+        
+        // Desenhar nível
+        function drawLevel() {
+            document.getElementById("level").textContent = "Nível: " + level;
+        }
+        
+        // Variáveis para controle de tempo
+        let lastTime = 0;
+        
+        // Função principal de desenho
+        function draw(currentTime) {
+            if (gamePaused) return;
+            
+            // Calcular delta time para animações suaves
+            const deltaTime = lastTime === 0 ? 0 : currentTime - lastTime;
+            lastTime = currentTime;
+            
+            // Limpar o canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenhar elementos
+            drawBricks();
+            updateParticles(); // Atualizar e desenhar partículas
+            drawBalls();
+            drawPaddle();
+            drawPowerUps();
+            drawActivePowerUps();
+            
+            // Atualizar power-ups
+            updatePowerUps(deltaTime);
+            
+            // Detectar colisões
+            collisionDetection();
+            
+            // Verificar se todas as bolas saíram da tela
+            let allBallsOut = true;
+            
+            // Atualizar posição das bolas
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const currentBall = balls[i];
+                
+                // Colisão com paredes laterais
+                if (currentBall.x + currentBall.dx > canvas.width - currentBall.radius || currentBall.x + currentBall.dx < currentBall.radius) {
+                    currentBall.dx = -currentBall.dx;
+                }
+                
+                // Colisão com parede superior
+                if (currentBall.y + currentBall.dy < currentBall.radius) {
+                    currentBall.dy = -currentBall.dy;
+                } 
+                // Colisão com a plataforma
+                else if (currentBall.y + currentBall.radius > paddle.y && 
+                         currentBall.y - currentBall.radius < paddle.y + paddle.height &&
+                         currentBall.x > paddle.x && 
+                         currentBall.x < paddle.x + paddle.width) {
+                    
+                    // Evitar que a bola fique presa na plataforma
+                    if (currentBall.y > paddle.y + paddle.height/2) {
+                        currentBall.y = paddle.y + paddle.height + currentBall.radius;
+                    } else {
+                        // Calcular o ângulo de rebatida baseado em onde a bola atinge a plataforma
+                        const hitPosition = (currentBall.x - paddle.x) / paddle.width;
+                        
+                        // Garantir um ângulo mínimo para evitar que a bola fique presa horizontalmente
+                        const minAngle = Math.PI/6; // 30 graus
+                        const maxAngle = Math.PI - minAngle; // 150 graus
+                        const angle = minAngle + hitPosition * (maxAngle - minAngle);
+                        
+                        const speed = currentBall.speed;
+                        currentBall.dx = speed * Math.cos(angle);
+                        currentBall.dy = -speed * Math.sin(angle);
+                        
+                        // Garantir que a bola vá para cima
+                        currentBall.y = paddle.y - currentBall.radius;
+                        
+                        // Aumentar levemente a velocidade a cada rebatida se não estiver com slow ativo
+                        if (!activePowerUps.slow.active) {
+                            currentBall.speed = Math.min(currentBall.speed + 0.05, 8);
+                        }
+                    }
+                }
+                
+                // Bola saiu da tela
+                if (currentBall.y - currentBall.radius > canvas.height) {
+                    // Remover a bola
+                    balls.splice(i, 1);
+                } else {
+                    // Mover a bola
+                    currentBall.x += currentBall.dx;
+                    currentBall.y += currentBall.dy;
+                    
+                    // Verificar se pelo menos uma bola ainda está em jogo
+                    if (currentBall.y < canvas.height) {
+                        allBallsOut = false;
+                    }
+                }
+            }
+            
+            // Se todas as bolas saíram e não há mais bolas
+            if (balls.length === 0 || allBallsOut) {
+                lives--;
+                drawLives();
+                
+                if (lives <= 0) {
+                    gameOver();
+                    return;
+                } else {
+                    // Resetar bolas
+                    balls = [{
+                        x: canvas.width / 2,
+                        y: canvas.height - 50,
+                        radius: ball.radius,
+                        speed: ball.speed,
+                        dx: ball.dx,
+                        dy: ball.dy,
+                        color: ball.color
+                    }];
+                    paddle.x = (canvas.width - paddle.width) / 2;
+                }
+            }
+            
+            // Mover a plataforma
+            if (rightPressed && paddle.x < canvas.width - paddle.width) {
+                paddle.x += paddle.speed;
+            } else if (leftPressed && paddle.x > 0) {
+                paddle.x -= paddle.speed;
+            }
+            
+            // Continuar animação
+            if (gameRunning) {
+                requestAnimationFrame(draw);
+            }
+        }
+        
+        // Iniciar um novo jogo
+        function startGame() {
+            score = 0;
+            lives = 3;
+            level = 1;
+            paddleFlashTimer = 0;
+            
+            updateScore();
+            drawLives();
+            drawLevel();
+            
+            initializeBricks();
+            
+            // Resetar power-ups
+            powerUps = [];
+            particles = [];
+            activePowerUps.widen.active = false;
+            activePowerUps.slow.active = false;
+            activePowerUps.through.active = false;
+            activePowerUps.shrink.active = false;
+            
+            // Resetar plataforma
+            paddle.width = paddle.originalWidth;
+            paddle.x = (canvas.width - paddle.width) / 2;
+            
+            // Inicializar bolas
+            balls = [{
+                x: canvas.width / 2,
+                y: canvas.height - 50,
+                radius: ball.radius,
+                speed: ball.speed,
+                dx: ball.dx,
+                dy: ball.dy,
+                color: ball.color
+            }];
+            
+            startScreen.style.display = "none";
+            gameOverScreen.style.display = "none";
+            levelCompleteScreen.style.display = "none";
+            
+            gameRunning = true;
+            gamePaused = false;
+            
+            // Inicializar o tempo
+            lastTime = 0;
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // Iniciar próximo nível
+        function nextLevel() {
+            level++;
+            drawLevel();
+            
+            // Aumentar a dificuldade a cada nível
+            ball.speed += 0.5;
+            
+            initializeBricks();
+            
+            // Não resetar power-ups ao passar de nível
+            // Apenas manter os power-ups ativos
+            
+            // Resetar plataforma (mas manter o tamanho se o power-up widen estiver ativo)
+            if (!activePowerUps.widen.active && !activePowerUps.shrink.active) {
+                paddle.width = paddle.originalWidth;
+            } else if (activePowerUps.widen.active) {
+                paddle.width = paddle.originalWidth * 1.5;
+            } else if (activePowerUps.shrink.active) {
+                paddle.width = paddle.originalWidth * 0.6;
+            }
+            
+            paddle.x = (canvas.width - paddle.width) / 2;
+            
+            // Inicializar bolas com velocidade aumentada, mantendo o efeito slow se estiver ativo
+            const newSpeed = activePowerUps.slow.active ? ball.speed / 2 : ball.speed;
+            
+            balls = [{
+                x: canvas.width / 2,
+                y: canvas.height - 50,
+                radius: ball.radius,
+                speed: newSpeed,
+                dx: newSpeed * (Math.random() > 0.5 ? 1 : -1),
+                dy: -newSpeed,
+                color: ball.color
+            }];
+            
+            levelCompleteScreen.style.display = "none";
+            
+            gameRunning = true;
+            
+            // Reiniciar o tempo
+            lastTime = 0;
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // Event listeners para os botões
+        startButton.addEventListener("click", startGame);
+        restartButton.addEventListener("click", startGame);
+        nextLevelButton.addEventListener("click", nextLevel);
+        
+        // Inicializar o jogo
+        initializeBricks();
+    </script>
+</body>
+</html>
